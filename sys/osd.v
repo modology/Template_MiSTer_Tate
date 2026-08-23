@@ -69,19 +69,16 @@ always@(posedge clk_sys) begin
 			if(!has_cmd) begin
 				has_cmd <= 1;
 				cmd <= io_din[7:0];
-				// command 0x40: OSDCMDENABLE, OSDCMDDISABLE
 				if(io_din[7:4] == 4) begin
 					if(!io_din[0]) {osd_status,highres} <= 0;
 					else {osd_status,info} <= {~io_din[2] & ~io_din[3],io_din[2]};
 					bcnt  <= 0;
 				end
-				// command 0x20: OSDCMDWRITE
 				if(io_din[7:5] == 'b001) begin
 					if(io_din[3]) highres <= 1;
 					bcnt <= {io_din[4:0], 8'h00};
 				end
 			end else begin
-				// command 0x40: OSDCMDENABLE, OSDCMDDISABLE
 				if(cmd[7:4] == 4) begin
 					if(bcnt == 0) infox <= io_din[11:0];
 					if(bcnt == 1) infoy <= io_din[11:0];
@@ -89,10 +86,7 @@ always@(posedge clk_sys) begin
 					if(bcnt == 3) infoh <= {io_din[5:0], 3'b000};
 					if(bcnt == 4) rot   <= io_din[1:0];
 				end
-
-				// command 0x20: OSDCMDWRITE
 				if(cmd[7:5] == 'b001) osd_buffer[bcnt] <= io_din[7:0];
-
 				bcnt <= bcnt + 1'd1;
 			end
 		end
@@ -127,9 +121,9 @@ reg        v_cnt_h, v_cnt_1, v_cnt_2, v_cnt_3, v_cnt_4;
 reg [21:0] v_osd_start_h, v_osd_start_1, v_osd_start_2, v_osd_start_3, v_osd_start_4, v_osd_start_5;
 reg [21:0] v_info_start_h, v_info_start_1, v_info_start_2, v_info_start_3, v_info_start_4, v_info_start_5;
 
-wire [21:0] osd_h_hdr = (info || rot) ? osd_h : (osd_h + OSD_HDR);
+// Preserve the MENU header/title-strip geometry when the OSD is rotated.
+wire [21:0] osd_h_hdr = info ? osd_h : (osd_h + OSD_HDR);
 
-// pipeline the comparisons a bit
 always @(posedge clk_video) if(ce_pix) begin
 	v_cnt_h <= v_cnt <= osd_t;
 	v_cnt_1 <= v_cnt < 320;
@@ -170,29 +164,25 @@ always @(posedge clk_video) begin
 	reg        half;
 
 	if(ce_pix) begin
-
 		deD <= de_in;
 		if(~&h_cnt) h_cnt <= h_cnt + 1'd1;
-
 		if(~&osd_hcnt)  osd_hcnt  <= osd_hcnt + 1'd1;
 		if(~&osd_hcnt2) osd_hcnt2 <= osd_hcnt2 + 1'd1;
 
 		if (h_cnt == h_osd_start) begin
 			osd_de[0] <= osd_en[1] && osd_h && (
-		                  osd_vcnt[11] ? (osd_vcnt[7] && (osd_vcnt[6:0] >= 4) && (osd_vcnt[6:0] < 19)) :
-								(info && (rot == 3)) ? !osd_vcnt[21:8] :
-			               (osd_vcnt < osd_h)
-								);
+				osd_vcnt[11] ? (osd_vcnt[7] && (osd_vcnt[6:0] >= 4) && (osd_vcnt[6:0] < 19)) :
+				(info && (rot == 3)) ? !osd_vcnt[21:8] :
+				(osd_vcnt < osd_h)
+			);
 			osd_hcnt <= 0;
 			osd_hcnt2 <= 0;
 			if(info && rot == 1) osd_hcnt2 <= 22'd128-infoh;
 		end
 		if (osd_hcnt+1 == osd_w) osd_de[0] <= 0;
 
-		// falling edge of de
 		if(!de_in && deD) dsp_width <= h_cnt[21:0];
 
-		// rising edge of de
 		if(de_in && !deD) begin
 			h_cnt <= 0;
 			v_cnt <= v_cnt + 1'd1;
@@ -200,12 +190,10 @@ always @(posedge clk_video) begin
 
 			if(h_cnt > {dsp_width, 2'b00}) begin
 				v_cnt <= 1;
-				f1 <= ~f1; // skip every other frame for interlace compatibility.
+				f1 <= ~f1;
 				if(~f1) begin
-
 					osd_en <= (osd_en << 1) | osd_enable;
 					if(~osd_enable) osd_en <= 0;
-
 					half <= 0;
 					if(v_cnt_h) begin
 						multiscan <= 0;
@@ -265,9 +253,9 @@ always @(posedge clk_video) begin
 	reg hs1,hs2,hs3;
 
 	nrdout1 <= din;
-	ordout1 <= {{osd_pixel, osd_pixel, OSD_COLOR[2], din[23:19]},// 23:16
-	            {osd_pixel, osd_pixel, OSD_COLOR[1], din[15:11]},// 15:8
-	            {osd_pixel, osd_pixel, OSD_COLOR[0], din[7:3]}}; //  7:0
+	ordout1 <= {{osd_pixel, osd_pixel, OSD_COLOR[2], din[23:19]},
+	            {osd_pixel, osd_pixel, OSD_COLOR[1], din[15:11]},
+	            {osd_pixel, osd_pixel, OSD_COLOR[0], din[7:3]}};
 
 	osd_mux <= ~osd_de[2];
 	rdout2  <= osd_mux ? nrdout1 : ordout1;
